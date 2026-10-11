@@ -1,6 +1,6 @@
 # `cl` — Count Lines
 
-> Um comando simples para **contar linhas** de arquivos pelo terminal.
+Um comando simples para **contar linhas** de arquivos pelo terminal.
 
 ---
 
@@ -36,8 +36,9 @@ cl
 
 ## 🧰 Opções de uso
 
-- **Diretório como entrada:** passe o nome de um diretório, **sem `/` no final**, para especificar onde contar as linhas.
+- **Diretório como entrada:** passe o nome de um diretório, sem `/` no final, para especificar onde contar as linhas.
 - **Ignorar linhas em branco:** use a opção `-nb` (*no blank*) para desconsiderar linhas em branco.
+- **Recursão:** use a opção `-r` para percorrer também os subdiretórios da pasta informada, contando as linhas dos arquivos encontrados neles.
 
 ### Exemplos
 
@@ -50,9 +51,15 @@ cl minha_pasta
 
 # Ignorar linhas em branco
 cl -nb
+
+# Contar linhas nos subdiretórios também
+cl minha_pasta -r
+
+# Contar linhas recursivamente, ignorando linhas em branco
+cl minha_pasta -r -nb
 ```
 
-> **Atenção:** se você passar uma pasta como entrada, ela deve ser o **primeiro argumento**.
+> **Atenção:** se você passar uma pasta como entrada, ela deve ser o **primeiro argumento**. As flags podem ser informadas depois dela.
 
 ---
 
@@ -63,6 +70,7 @@ cl -nb
 | `gcc cl.c -o cl` | Compila o programa |
 | `sudo mv cl /usr/bin` | Instala o executável em `/usr/bin` |
 | `-nb` | Ignora linhas em branco |
+| `-r` | Percorre os subdiretórios recursivamente |
 | Diretório como argumento | Define a pasta em que contar as linhas |
 
 ---
