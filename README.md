@@ -39,6 +39,7 @@ cl
 - **Diretório como entrada:** passe o nome de um diretório, sem `/` no final, para especificar onde contar as linhas.
 - **Ignorar linhas em branco:** use a opção `-nb` (*no blank*) para desconsiderar linhas em branco.
 - **Recursão:** use a opção `-r` para percorrer também os subdiretórios da pasta informada, contando as linhas dos arquivos encontrados neles.
+- **Arquivos ocultos:** use a opção `-a` para incluir arquivos ocultos na contagem. No Linux, arquivos e diretórios cujos nomes começam com `.` são considerados ocultos.
 
 ### Exemplos
 
@@ -52,11 +53,17 @@ cl minha_pasta
 # Ignorar linhas em branco
 cl -nb
 
-# Contar linhas nos subdiretórios também
+# Percorrer os subdiretórios também
 cl minha_pasta -r
 
-# Contar linhas recursivamente, ignorando linhas em branco
-cl minha_pasta -r -nb
+# Incluir arquivos ocultos
+cl minha_pasta -a
+
+# Contar recursivamente, incluindo arquivos ocultos
+cl minha_pasta -r -a
+
+# Combinar todas as opções
+cl minha_pasta -r -a -nb
 ```
 
 > **Atenção:** se você passar uma pasta como entrada, ela deve ser o **primeiro argumento**. As flags podem ser informadas depois dela.
@@ -71,6 +78,7 @@ cl minha_pasta -r -nb
 | `sudo mv cl /usr/bin` | Instala o executável em `/usr/bin` |
 | `-nb` | Ignora linhas em branco |
 | `-r` | Percorre os subdiretórios recursivamente |
+| `-a` | Inclui arquivos ocultos na contagem |
 | Diretório como argumento | Define a pasta em que contar as linhas |
 
 ---
