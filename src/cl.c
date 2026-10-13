@@ -1,19 +1,34 @@
-#define _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE // Para ter acesso aos macros de tipo de entry de diretório
 #include <stdio.h>
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
 #include <stdint.h>
+#include "hashset.h"
+
+static uint64_t flags = 0; // Variável com capacidade para armazenar 64 flags
+
+extern HashSet * SetIncExt; // HashSet que armazena extensões a incluir na contagem
+extern HashSet * SetExcExt; // HashSet que armazena extensões a excluir na contagem
+extern HashSet * SetExcDir; // HashSet que armazena diretórios a excluir na contagem
 
 // flags escritas
-#define NOBLANKSSTR "-nb"
-#define RECURSIVOSTR "-r"
-#define CONTARTUDOSTR "-a"
+#define NOBLANKSSTR "-nb"           
+#define RECURSIVOSTR "-r"           
+#define CONTARTUDOSTR "-a"          
+#define MEDIASTR "-m"               // a fazer
+#define INCEXTENSAOSTR "-ie"
+#define EXCEXTENSAOSTR "-xe"
+#define EXCLUIRDIRSTR "-d"  
 
 // flags em números
-#define NOBLANKBIT (1)
+#define NOBLANKBIT (1 << 0)
 #define RECURSIVOBIT (1 << 1)
 #define CONTARTUDOBIT (1 << 2)
+#define MEDIABIT (1 << 3)
+#define INCEXTENSAOBIT (1 << 4)
+#define EXCEXTENSAOBIT (1 << 5)
+#define EXCLUIRDIRBIT (1 << 6)
 
 // Função que verifica se uma string só possui caracteres "inválidos" (espaço, quebra de linha, tab e '\r' (windows))
 //
@@ -35,6 +50,28 @@ bool stringVazia(const char * __s) {
     return true; // Se saiu do while ent é tudo inválido
 }
 
+// Função que acha a posição última ocorrência de um caractere especificado
+//
+// Argumentos:
+// 1 - A string onde procurar
+// 2 - O caractere a procurar
+//
+// Retorna:
+// 1 - A posição onde achou o caractere
+// 2 - -1 caso não encontre o caractere
+int32_t acharUltChar(const char* string, const char alvo) {
+    const char * const pos_inv = string - 1; // Guarda o endereço imediatamente anterior ao começo da string
+
+    string += (strlen(string) - 1); // Salta para o começo da string
+
+    while(string != pos_inv) { // Enquanto estiver numa posição válida
+        if(*string == alvo) return string - (pos_inv + 1); // Calcula posição do caractere
+        string--; // Confere o caractere imediatamente anterior caso não tenha encontrado
+    }
+
+    return -1; // Retorna -1 se não tiver encontrado
+}
+
 // Função que retorna uma bitmask das flags ativadas pelo usuário
 //
 // Argumentos:
@@ -43,16 +80,16 @@ bool stringVazia(const char * __s) {
 //
 // Retorno:
 // Uma bitmask na forma de um uint64_t
-uint64_t ligarFlags(int argc, char *argv[]) {
-    
-    uint64_t flags = 0; // Começa sem flags ativas
+void ligarFlags(int argc, char *argv[]) {
     for(int i = 0; i < argc; i++) { // Enquanto tiver argumentos de entrada
         if(strcmp(argv[i], NOBLANKSSTR) == 0) flags |= NOBLANKBIT; // Liga o bit "no blank", caso argumento seja "-nb"
         if(strcmp(argv[i], RECURSIVOSTR) == 0) flags |= RECURSIVOBIT; // Liga o bit "recursivo", caso argumento seja "-r"
         if(strcmp(argv[i], CONTARTUDOSTR) == 0) flags |= CONTARTUDOBIT; // Liga o bit "contar tudo", caso argumento seja "-a"
+        if(strcmp(argv[i], MEDIASTR) == 0) flags |= MEDIABIT; // Liga o bit "média", caso argumento seja "-m"
+        if(strcmp(argv[i], INCEXTENSAOSTR) == 0) flags |= INCEXTENSAOBIT; // Liga o bit "incluir extensão", caso argumento seja "-ie"
+        if(strcmp(argv[i], EXCEXTENSAOSTR) == 0) flags |= EXCEXTENSAOBIT; // Liga o bit "excluir extensão", caso argumento seja "-xe"
+        if(strcmp(argv[i], EXCLUIRDIRSTR) == 0) flags |= EXCLUIRDIRBIT; // Liga o bit "excluir diretório", caso argumento seja "-d"
     }
-
-    return flags; // Retorna bitmask com bits de flag setados
 }
 
 // Função que conta as linhas escritas em todos os arquivos de um diretório
@@ -64,8 +101,8 @@ uint64_t ligarFlags(int argc, char *argv[]) {
 //
 // Retorno:
 // Quantas linhas há no todo de arquivos do diretório passado como parâmetro
-size_t contarLinhasDir(DIR *pasta, char *path, uint64_t flags) {
-    size_t linhas = 0; // Começa contagem de linhas em 0
+uint64_t contarLinhasDir(DIR *pasta, char *path) {
+    uint64_t linhas = 0; // Começa contagem de linhas em 0
 
     struct dirent *entry; // Ponteiro de entries de diretórios 
     
@@ -77,6 +114,8 @@ size_t contarLinhasDir(DIR *pasta, char *path, uint64_t flags) {
             if(strcmp(entry->d_name, "..") == 0) continue; // Ignore o diretório pai (pasta oculta)
 
             if(entry->d_name[0] == '.') if(!(flags & CONTARTUDOBIT)) continue; // Se a flag "-a" estiver desligada, ignore diretórios ocultos
+
+            if(flags & EXCLUIRDIRBIT) if(entryExiste(SetExcDir, entry->d_name)) continue; // Se a flag "-d" estiver ativa, checa se nome de diretório está registrado e pula se estiver
             
             char caminho[4096]; // Buffer para guardar caminho total até próximo diretório
 
@@ -94,7 +133,7 @@ size_t contarLinhasDir(DIR *pasta, char *path, uint64_t flags) {
                 continue;
             }
 
-            linhas += contarLinhasDir(prox_pasta, caminho, flags); // Conta as linhas do próximo diretório
+            linhas += contarLinhasDir(prox_pasta, caminho); // Conta as linhas do próximo diretório
 
             closedir(prox_pasta); // Fecha diretório
             continue; // Vai pra próxima entry
@@ -103,6 +142,23 @@ size_t contarLinhasDir(DIR *pasta, char *path, uint64_t flags) {
         if(entry->d_type != DT_REG) continue; // Se não for um potencial arquivo com texto, ignore (binários tbm são lidos btw)
 
         if(entry->d_name[0] == '.') if(!(flags & CONTARTUDOBIT)) continue; // Se a flag "-a" estiver desligada, ignore arquivos ocultos
+
+        {
+            int32_t ponto = -1; // Armazenará a posição dos começos de extensões
+
+            if(flags & INCEXTENSAOBIT) { // Se a flag "-ie" estiver ativa, leia apenas arquivos com extensões que foram incluídos
+                if((ponto = acharUltChar(entry->d_name, '.')) != -1) { // Acha a posição do começo da extensão do arquivo e vê se extensão existe no nome
+                    if(!entryExiste(SetIncExt, entry->d_name + ponto)) continue; // Pula arquivo se extensão não estiver registrada
+                }
+                else continue; // Pula arquivo se ele não tem extensão
+            }
+
+            if(flags & EXCEXTENSAOBIT) { // Se a flag "-xe" estiver ativa, leia apenas arquivos com extensões que foram incluídos
+                if((ponto = acharUltChar(entry->d_name, '.')) != -1) { // Acha a posição do começo da extensão do arquivo e vê se extensão existe no nome
+                    if(entryExiste(SetExcExt, entry->d_name + ponto)) continue; // Pula o arquivo se a extensão estiver registrada
+                }
+            }
+        }
 
         char caminhoArquivo[4096]; // Buffer para guardar caminho total até próximo arquivo
 
@@ -151,13 +207,47 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    uint64_t flags = ligarFlags(argc, argv); // Recolhe a bitmask de flags
+    ligarFlags(argc, argv); // Recolhe a bitmask de flags
 
-    size_t linhas = contarLinhasDir(pasta, path, flags); // conta as linhas totais do diretório requisitado
+    initHashSets(); // Inicializa os hash sets para as flags "-ie", "-xe" e "-d"
+
+    if(flags & INCEXTENSAOBIT) { // Se a flag "-ie" estiver ativa, registre inclusões
+
+        uint16_t i = 0; // Índice para navegar pelo argv[] 
+        while(strcmp(argv[i++], INCEXTENSAOSTR) != 0); // As inclusões são registradas logo após a flag relacionada
+
+        while(i < argc && argv[i][0] != '-') { // Enquanto não chegar ao fim do argc e enquanto não achar outra flag 
+            inserirNo(SetIncExt, criarNo(argv[i++])); // Registre as entradas no hash set correspondente
+        }
+    }
+
+    if(flags & EXCEXTENSAOBIT) { // Se a flag "-xe" estiver ativa, registre exclusões
+
+        uint16_t i = 0; // Índice para navegar pelo argv[]
+        while(strcmp(argv[i++], EXCEXTENSAOSTR) != 0); // As exclusões são registradas logo após a flag relacionada
+
+        while(i < argc && argv[i][0] != '-') { // Enquanto não chegar ao fim do argc e enquanto não achar outra flag
+            inserirNo(SetExcExt, criarNo(argv[i++])); // Registre as entradas no hash set correspondente
+        }
+    }
+
+    if(flags & EXCLUIRDIRBIT) { // Se a flag "-d" estiver ativa, registre exclusões
+
+        uint16_t i = 0; // Índice para navegar pelo argv[]
+        while(strcmp(argv[i++], EXCLUIRDIRSTR) != 0); // As exclusões são registradas logo após a flag relacionada
+
+        while(i < argc && argv[i][0] != '-') { // Enquanto não chegar ao fim do argc e enquanto não achar outra flag
+            inserirNo(SetExcDir, criarNo(argv[i++])); // Registre as entradas no hash set correspondente
+        }
+    }
+
+    uint64_t linhas = contarLinhasDir(pasta, path); // conta as linhas totais do diretório requisitado
 
     printf("Os arquivos dessa pasta totalizam %zu linhas! Wowzers.", linhas); // Fala quantas linhas foram contadas
 
     closedir(pasta); // Fecha diretório
+
+    endHashSets(); // Libera todos os hash sets da memória
 
     return 0; // Sucesso
 }
