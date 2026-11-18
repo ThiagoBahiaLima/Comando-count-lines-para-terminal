@@ -1,9 +1,11 @@
 #define _DEFAULT_SOURCE // Para ter acesso aos macros de tipo de entry de diretório
 #include <stdio.h>
 #include <dirent.h>
-#include <errno.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "hashset.h"
 
 static uint64_t flags = 0; // Variável com capacidade para armazenar 64 flags
@@ -13,22 +15,20 @@ extern HashSet * SetExcExt; // HashSet que armazena extensões a excluir na cont
 extern HashSet * SetExcDir; // HashSet que armazena diretórios a excluir na contagem
 
 // flags escritas
-#define NOBLANKSSTR "-nb"           
-#define RECURSIVOSTR "-r"           
-#define CONTARTUDOSTR "-a"          
-#define MEDIASTR "-m"               // a fazer
-#define INCEXTENSAOSTR "-ie"
-#define EXCEXTENSAOSTR "-xe"
-#define EXCLUIRDIRSTR "-d"  
+#define NOBLANKSSTR         "-nb"           
+#define RECURSIVOSTR        "-r"           
+#define CONTARTUDOSTR       "-a"
+#define INCEXTENSAOSTR      "-ie"
+#define EXCEXTENSAOSTR      "-xe"
+#define EXCLUIRDIRSTR       "-d"  
 
 // flags em números
-#define NOBLANKBIT (1 << 0)
-#define RECURSIVOBIT (1 << 1)
-#define CONTARTUDOBIT (1 << 2)
-#define MEDIABIT (1 << 3)
-#define INCEXTENSAOBIT (1 << 4)
-#define EXCEXTENSAOBIT (1 << 5)
-#define EXCLUIRDIRBIT (1 << 6)
+#define NOBLANKBIT          (1 << 0)
+#define RECURSIVOBIT        (1 << 1)
+#define CONTARTUDOBIT       (1 << 2)
+#define INCEXTENSAOBIT      (1 << 3)
+#define EXCEXTENSAOBIT      (1 << 4)
+#define EXCLUIRDIRBIT       (1 << 5)
 
 // Função que verifica se uma string só possui caracteres "inválidos" (espaço, quebra de linha, tab e '\r' (windows))
 //
@@ -72,23 +72,22 @@ int32_t acharUltChar(const char* string, const char alvo) {
     return -1; // Retorna -1 se não tiver encontrado
 }
 
-// Função que retorna uma bitmask das flags ativadas pelo usuário
+// Função que seta os bits das flags passadas para o programa
 //
 // Argumentos:
 // 1 - Contangem de argumentos de entrada de programa
 // 2 - Argumentos de entrada de programa
 //
 // Retorno:
-// Uma bitmask na forma de um uint64_t
+// Sem retorno
 void ligarFlags(int argc, char *argv[]) {
     for(int i = 0; i < argc; i++) { // Enquanto tiver argumentos de entrada
-        if(strcmp(argv[i], NOBLANKSSTR) == 0) flags |= NOBLANKBIT; // Liga o bit "no blank", caso argumento seja "-nb"
-        if(strcmp(argv[i], RECURSIVOSTR) == 0) flags |= RECURSIVOBIT; // Liga o bit "recursivo", caso argumento seja "-r"
-        if(strcmp(argv[i], CONTARTUDOSTR) == 0) flags |= CONTARTUDOBIT; // Liga o bit "contar tudo", caso argumento seja "-a"
-        if(strcmp(argv[i], MEDIASTR) == 0) flags |= MEDIABIT; // Liga o bit "média", caso argumento seja "-m"
-        if(strcmp(argv[i], INCEXTENSAOSTR) == 0) flags |= INCEXTENSAOBIT; // Liga o bit "incluir extensão", caso argumento seja "-ie"
-        if(strcmp(argv[i], EXCEXTENSAOSTR) == 0) flags |= EXCEXTENSAOBIT; // Liga o bit "excluir extensão", caso argumento seja "-xe"
-        if(strcmp(argv[i], EXCLUIRDIRSTR) == 0) flags |= EXCLUIRDIRBIT; // Liga o bit "excluir diretório", caso argumento seja "-d"
+        if(strcmp(argv[i], NOBLANKSSTR    ) == 0 ) flags |= NOBLANKBIT;      // Liga o bit "no blank", caso argumento seja "-nb"
+        if(strcmp(argv[i], RECURSIVOSTR   ) == 0 ) flags |= RECURSIVOBIT;    // Liga o bit "recursivo", caso argumento seja "-r"
+        if(strcmp(argv[i], CONTARTUDOSTR  ) == 0 ) flags |= CONTARTUDOBIT;   // Liga o bit "contar ocultos", caso argumento seja "-a"
+        if(strcmp(argv[i], INCEXTENSAOSTR ) == 0 ) flags |= INCEXTENSAOBIT;  // Liga o bit "incluir extensão", caso argumento seja "-ie"
+        if(strcmp(argv[i], EXCEXTENSAOSTR ) == 0 ) flags |= EXCEXTENSAOBIT;  // Liga o bit "excluir extensão", caso argumento seja "-xe"
+        if(strcmp(argv[i], EXCLUIRDIRSTR  ) == 0 ) flags |= EXCLUIRDIRBIT;   // Liga o bit "excluir diretório", caso argumento seja "-d"
     }
 }
 
@@ -101,7 +100,14 @@ void ligarFlags(int argc, char *argv[]) {
 //
 // Retorno:
 // Quantas linhas há no todo de arquivos do diretório passado como parâmetro
-uint64_t contarLinhasDir(DIR *pasta, char *path) {
+uint64_t contarLinhasDir(char *path) {
+    DIR * pasta = opendir(path);
+
+    if(!pasta) {
+        perror("Não foi fossível abrir pasta");
+        return 0;
+    }
+
     uint64_t linhas = 0; // Começa contagem de linhas em 0
 
     struct dirent *entry; // Ponteiro de entries de diretórios 
@@ -126,16 +132,16 @@ uint64_t contarLinhasDir(DIR *pasta, char *path) {
                 continue;
             }
 
-            DIR * prox_pasta = opendir(caminho); // Tenta abrir próximo diretório para recursão
+            // DIR * prox_pasta = opendir(caminho); // Tenta abrir próximo diretório para recursão
 
-            if(!prox_pasta) { // Caso não tenha aberto
-                perror("opendir");
-                continue;
-            }
+            // if(!prox_pasta) { // Caso não tenha aberto
+            //     perror("Erro ao abrir diretório");
+            //     continue;
+            // }
 
-            linhas += contarLinhasDir(prox_pasta, caminho); // Conta as linhas do próximo diretório
+            linhas += contarLinhasDir(caminho); // Conta as linhas do próximo diretório
 
-            closedir(prox_pasta); // Fecha diretório
+            // closedir(prox_pasta); // Fecha diretório
             continue; // Vai pra próxima entry
         }
         
@@ -172,7 +178,7 @@ uint64_t contarLinhasDir(DIR *pasta, char *path) {
         FILE * arquivo = fopen(caminhoArquivo, "r"); // tenta abrir arquivo para contagem
 
         if(!arquivo) { // Se falhar a abertura, ignore arquivo
-            perror("fopen");
+            perror("Erro ao abrir arquivo");
             continue;
         }
 
@@ -186,6 +192,8 @@ uint64_t contarLinhasDir(DIR *pasta, char *path) {
         fclose(arquivo); // Feche arquivo (evitar memory leak é legal)
     }
 
+    closedir(pasta);
+
     return linhas; // Retorne linhas contadas
 }
 
@@ -195,19 +203,23 @@ int main(int argc, char *argv[]) {
     char *path = argc > 1 ? argv[1] : "."; // O diretório a ser analisado deve sempre ser o primeiro argumento da execução 
                                            // Caso o usuário queira especificar o diretório, claro
 
-    DIR * pasta = opendir(path); // tenta abrir o suposto diretório passado
+    struct stat status;
 
-    if(!pasta) { // Se não for um diretório válido, abra o diretório atual e atualize a variável path de acordo
-        pasta = opendir(".");
-        path = ".";
-    }
+    if(stat(path, &status) == -1 || !S_ISDIR(status.st_mode)) path = ".";
+    
+    // DIR * pasta = opendir(path); // tenta abrir o suposto diretório passado
 
-    if(!pasta) { // Caso ainda assim não tenha aberto o diretório, reze e encerre a chamada
-        perror("opendir");
-        return 1;
-    }
+    // if(!pasta) { // Se não for um diretório válido, abra o diretório atual e atualize a variável path de acordo
+    //     pasta = opendir(".");
+    //     path = ".";
+    // }
 
-    ligarFlags(argc, argv); // Recolhe a bitmask de flags
+    // if(!pasta) { // Caso ainda assim não tenha aberto o diretório, reze e encerre a chamada
+    //     perror("Não foi possível abrir diretório");
+    //     return 1;
+    // }
+
+    ligarFlags(argc, argv); // Liga os bits das flags
 
     initHashSets(); // Inicializa os hash sets para as flags "-ie", "-xe" e "-d"
 
@@ -241,11 +253,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    uint64_t linhas = contarLinhasDir(pasta, path); // conta as linhas totais do diretório requisitado
+    uint64_t linhas = contarLinhasDir(path); // conta as linhas totais do diretório requisitado
 
     printf("Os arquivos dessa pasta totalizam %zu linhas! Wowzers.", linhas); // Fala quantas linhas foram contadas
 
-    closedir(pasta); // Fecha diretório
+    // closedir(pasta); // Fecha diretório
 
     endHashSets(); // Libera todos os hash sets da memória
 
